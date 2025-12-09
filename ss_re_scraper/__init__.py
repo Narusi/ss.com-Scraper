@@ -13,10 +13,16 @@ from .scraper import (
     readPostList,
     saveToDB,
     loadFromDB,
+    cleanData,
+    updateDB,
+    getCostComparison,
+    getCostTrends,
+    getTopAffordable,
+    getTopAffordableByDistrictAndProject,
     uniqCols
 )
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 __author__ = 'Nauris'
 __all__ = [
     'getPostDate',
@@ -27,5 +33,11 @@ __all__ = [
     'readPostList',
     'saveToDB',
     'loadFromDB',
+    'cleanData',
+    'updateDB',
+    'getCostComparison',
+    'getCostTrends',
+    'getTopAffordable',
+    'getTopAffordableByDistrictAndProject',
     'uniqCols'
 ]

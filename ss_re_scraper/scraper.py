@@ -340,3 +340,254 @@ def loadFromDB(tableName, dbName = 'miniSS.db', uniqCols = uniqCols):
     dbDF = dbDF.drop_duplicates(uniqCols)
 
     return dbDF
+
+##=============================================================##
+##=====================  DATA CLEANING  =======================##
+##=============================================================##
+def cleanData(dataDF, remove_outliers=True, verbose=False):
+    """
+    Clean scraped property data by removing outliers and anomalies.
+
+    Args:
+        dataDF (pd.DataFrame): Raw data to clean
+        remove_outliers (bool): Whether to remove outliers
+        verbose (bool): Print cleaning statistics
+
+    Returns:
+        pd.DataFrame: Cleaned data
+    """
+    original_count = len(dataDF)
+    cleanDF = dataDF.copy()
+
+    # Handle price anomalies where Alt. Price is unreasonably high
+    altPrInex = cleanDF['Alt. Price of sqm'] >= cleanDF['Price of sqm'].max()
+    cleanDF.loc[altPrInex, 'Alt. Price of sqm'] = cleanDF.loc[altPrInex, 'Price of sqm']
+
+    if remove_outliers:
+        # Remove properties with unrealistic size
+        cleanDF = cleanDF.loc[cleanDF['Size'] <= 1000]
+
+        # Remove properties where floor > max floor
+        cleanDF = cleanDF.loc[cleanDF['Floor'] <= cleanDF['Max. Floor']]
+
+        # Remove properties with too many rooms (likely data errors)
+        cleanDF = cleanDF.loc[cleanDF['Rooms'] <= 10]
+
+        # Remove properties with unrealistic floor numbers
+        cleanDF = cleanDF.loc[cleanDF['Floor'] <= 100]
+        cleanDF = cleanDF.loc[cleanDF['Max. Floor'] <= 100]
+
+    # Drop any rows with NaN values
+    cleanDF = cleanDF.dropna()
+
+    if verbose:
+        removed = original_count - len(cleanDF)
+        print(f"Cleaned {original_count} records -> {len(cleanDF)} records ({removed} removed)")
+
+    return cleanDF
+
+##=============================================================##
+##==================  UPDATE DATABASE  ========================##
+##=============================================================##
+def updateDB(initialLink, tableName='PropertiesRAW', dbName='miniSS.db',
+             page_n=100, auto_clean=True, verbose=False):
+    """
+    Scrape data and update database with automatic cleaning.
+
+    Args:
+        initialLink (str): URL to scrape (e.g., 'https://www.ss.com/en/real-estate/flats/riga/')
+        tableName (str): Database table name
+        dbName (str): Database filename
+        page_n (int): Number of pages to scrape per district
+        auto_clean (bool): Automatically clean data before saving
+        verbose (bool): Print progress messages
+
+    Returns:
+        pd.DataFrame: Updated data
+    """
+    if verbose: print(f"Gathering districts from {initialLink}")
+    districts = gatherSubCats(initialLink)
+
+    if verbose: print(f"Scraping {len(districts)} districts...")
+    ipasumi = readPostList(districts, page_n=page_n, verbose=verbose)
+
+    if auto_clean:
+        if verbose: print("Cleaning data...")
+        ipasumi = cleanData(ipasumi, remove_outliers=True, verbose=verbose)
+
+    if verbose: print(f"Saving to database: {dbName}")
+    ipasumi = saveToDB(ipasumi, tableName=tableName, uniqCols=uniqCols, dbName=dbName)
+
+    if verbose: print(f"✓ Database updated successfully. Total records: {len(ipasumi)}")
+
+    return ipasumi
+
+##=============================================================##
+##==================  ANALYTICAL REPORTS  =====================##
+##=============================================================##
+def getCostComparison(dbName='miniSS.db', tableName='PropertiesRAW', deal_type='SELL'):
+    """
+    Compare average costs between districts.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+        deal_type (str): 'SELL' or 'RENT'
+
+    Returns:
+        pd.DataFrame: Cost comparison by district
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(dbName)
+    query = f"""
+    SELECT District,
+           COUNT(*) as listings_count,
+           ROUND(AVG("Alt. Price of sqm"), 2) as avg_price_sqm,
+           ROUND(MIN("Alt. Price of sqm"), 2) as min_price_sqm,
+           ROUND(MAX("Alt. Price of sqm"), 2) as max_price_sqm,
+           ROUND(AVG("Total Price"), 2) as avg_total_price,
+           ROUND(AVG(Size), 1) as avg_size,
+           ROUND(AVG(Rooms), 1) as avg_rooms
+    FROM {tableName}
+    WHERE "Deal Type" = '{deal_type}'
+    GROUP BY District
+    HAVING COUNT(*) > 5
+    ORDER BY avg_price_sqm DESC
+    """
+    result = pd.read_sql(query, conn)
+    conn.close()
+
+    return result
+
+def getCostTrends(dbName='miniSS.db', tableName='PropertiesRAW', months=6):
+    """
+    Get cost trends over time.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+        months (int): Number of months to analyze
+
+    Returns:
+        pd.DataFrame: Cost trends by month and district
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(dbName)
+    query = f"""
+    SELECT
+        strftime('%Y-%m', "Post Date") as month,
+        District,
+        "Deal Type",
+        COUNT(*) as listings_count,
+        ROUND(AVG("Alt. Price of sqm"), 2) as avg_price_sqm,
+        ROUND(AVG("Total Price"), 2) as avg_total_price
+    FROM {tableName}
+    WHERE "Post Date" >= date('now', '-{months} months')
+    GROUP BY month, District, "Deal Type"
+    HAVING COUNT(*) > 3
+    ORDER BY month DESC, avg_price_sqm DESC
+    """
+    result = pd.read_sql(query, conn)
+    conn.close()
+
+    # Convert month to datetime
+    result['month'] = pd.to_datetime(result['month'])
+
+    return result
+
+def getTopAffordable(dbName='miniSS.db', tableName='PropertiesRAW',
+                     district=None, project=None, deal_type='RENT', top_n=10):
+    """
+    Get TOP N most affordable offers.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+        district (str): Filter by district (None = all districts)
+        project (str): Filter by project type (None = all projects)
+        deal_type (str): 'SELL' or 'RENT'
+        top_n (int): Number of results to return
+
+    Returns:
+        pd.DataFrame: Top affordable listings
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(dbName)
+
+    where_clauses = [f'"Deal Type" = \'{deal_type}\'']
+    if district:
+        where_clauses.append(f'District = \'{district}\'')
+    if project:
+        where_clauses.append(f'Project = \'{project}\'')
+
+    where_sql = ' AND '.join(where_clauses)
+
+    query = f"""
+    SELECT District, Project, "Street Name", Rooms, Size, Floor, "Max. Floor",
+           "Price of sqm", "Total Price", Link, "Post Date"
+    FROM {tableName}
+    WHERE {where_sql}
+    ORDER BY "Price of sqm" ASC
+    LIMIT {top_n}
+    """
+    result = pd.read_sql(query, conn)
+    conn.close()
+
+    # Convert Post Date to datetime
+    result['Post Date'] = pd.to_datetime(result['Post Date'], errors='coerce')
+
+    return result
+
+def getTopAffordableByDistrictAndProject(dbName='miniSS.db', tableName='PropertiesRAW',
+                                          deal_type='RENT', top_n=10):
+    """
+    Get TOP N most affordable offers grouped by district and project.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+        deal_type (str): 'SELL' or 'RENT'
+        top_n (int): Number of results per district/project combination
+
+    Returns:
+        dict: Dictionary with keys as (district, project) tuples and DataFrames as values
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(dbName)
+
+    # Get all district/project combinations
+    combo_query = f"""
+    SELECT DISTINCT District, Project
+    FROM {tableName}
+    WHERE "Deal Type" = '{deal_type}'
+    """
+    combos = pd.read_sql(combo_query, conn)
+
+    results = {}
+
+    for _, row in combos.iterrows():
+        district = row['District']
+        project = row['Project']
+
+        query = f"""
+        SELECT District, Project, "Street Name", Rooms, Size, Floor, "Max. Floor",
+               "Price of sqm", "Total Price", Link, "Post Date"
+        FROM {tableName}
+        WHERE "Deal Type" = '{deal_type}'
+          AND District = '{district}'
+          AND Project = '{project}'
+        ORDER BY "Price of sqm" ASC
+        LIMIT {top_n}
+        """
+        df = pd.read_sql(query, conn)
+        if len(df) > 0:
+            df['Post Date'] = pd.to_datetime(df['Post Date'], errors='coerce')
+            results[(district, project)] = df
+
+    conn.close()
+
+    return results

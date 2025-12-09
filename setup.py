@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="ss_re_scraper",
-    version="0.1.0",
+    version="0.2.0",
     author="Nauris",
     description="A Python package for scraping real estate data from www.ss.com",
     long_description=long_description,
@@ -27,5 +27,17 @@ setup(
         'beautifulsoup4>=4.9.0',
         'pandas>=1.0.0',
         'numpy>=1.18.0',
+        'nbformat>=4.2.0',
     ],
+    extras_require={
+        'analysis': [
+            'matplotlib>=3.0.0',
+            'plotly>=4.0.0',
+            'seaborn>=0.9.0',
+        ],
+        'pdf': [
+            'reportlab>=3.5.0',
+            'matplotlib>=3.0.0',
+        ],
+    },
 )
