@@ -178,11 +178,12 @@ def readPostList(subCats, categories=[], page_n=100, verbose=False):
     for key in keyList:
         if key != 'All announcements':
             if verbose: print('Processing', key);
-            
-            dataDF = dataDF.append(pd.DataFrame(GetProperties(subCats[key], 
-                                                              district = key, 
-                                                              pages=page_n), 
-                                                columns=cols))
+
+            new_data = pd.DataFrame(GetProperties(subCats[key],
+                                                  district = key,
+                                                  pages=page_n),
+                                    columns=cols)
+            dataDF = pd.concat([dataDF, new_data], ignore_index=True)
             
     dataDF = dataDF.dropna()
     dataDF = dataDF[np.logical_and(dataDF['Total Price'] > 0, dataDF['Rooms'] != 'Other')]
@@ -216,7 +217,7 @@ def saveToDB(newData, tableName, uniqCols, dbName = 'miniSS.db', cols = []):
             oldData[c] = pd.to_datetime(oldData[c])
         
         #Append and save to database
-        newData = newData.append(oldData).sort_values(by=['Post Date'], ascending=False)
+        newData = pd.concat([newData, oldData], ignore_index=True).sort_values(by=['Post Date'], ascending=False)
         newData = newData.drop_duplicates(uniqCols)
         newData.to_sql(tableName, conn, if_exists='append')
     except:

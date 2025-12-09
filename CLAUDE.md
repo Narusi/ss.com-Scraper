@@ -359,6 +359,20 @@ merged = sws.saveToDB(new_data, 'PropertiesRAW', uniqCols)
 5. **No resume capability** - Scraping interruption requires restart
 6. **Database append-only** - No UPDATE mechanism, only INSERT after dedup
 
+## Compatibility Notes
+
+### Pandas 2.x Compatibility
+
+The code has been updated for pandas 2.x compatibility:
+- Replaced deprecated `DataFrame.append()` with `pd.concat()`
+- Lines 186, 220: Now using `pd.concat([df1, df2], ignore_index=True)`
+
+**Tested with**:
+- Python 3.11
+- pandas 2.3.3
+- numpy 2.3.5
+- beautifulsoup4 4.14.3
+
 ---
 
 ## Future Enhancement Ideas
