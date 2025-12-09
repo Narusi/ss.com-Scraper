@@ -239,7 +239,8 @@ def readPostList(subCats, categories=[], page_n=100, verbose=False):
     cols = ['ID', 'Deal Type', 'Comment', 'Link', 'District', 'Street Name',
             'Street No.', 'Rooms', 'Size','Floor', 'Max. Floor','Project',
             'Post Date', 'Price of sqm', 'Alt. Price of sqm','Total Price', 'Alt. Price']
-    dataDF = pd.DataFrame(columns=cols)
+
+    dataframes = []
 
     if len(categories) > 0:
         keyList = categories
@@ -250,10 +251,13 @@ def readPostList(subCats, categories=[], page_n=100, verbose=False):
         if key != 'All announcements':
             if verbose: print('Processing', key);
 
-            dataDF = dataDF.append(pd.DataFrame(GetProperties(subCats[key],
-                                                              district = key,
-                                                              pages=page_n),
-                                                columns=cols))
+            df_chunk = pd.DataFrame(GetProperties(subCats[key],
+                                                  district = key,
+                                                  pages=page_n),
+                                   columns=cols)
+            dataframes.append(df_chunk)
+
+    dataDF = pd.concat(dataframes, ignore_index=True) if dataframes else pd.DataFrame(columns=cols)
 
     dataDF = dataDF.dropna()
     dataDF = dataDF[np.logical_and(dataDF['Total Price'] > 0, dataDF['Rooms'] != 'Other')]
@@ -300,7 +304,7 @@ def saveToDB(newData, tableName, uniqCols, dbName = 'miniSS.db', cols = []):
             oldData[c] = pd.to_datetime(oldData[c])
 
         #Append and save to database
-        newData = newData.append(oldData).sort_values(by=['Post Date'], ascending=False)
+        newData = pd.concat([newData, oldData], ignore_index=True).sort_values(by=['Post Date'], ascending=False)
         newData = newData.drop_duplicates(uniqCols)
         newData.to_sql(tableName, conn, if_exists='append')
     except:
