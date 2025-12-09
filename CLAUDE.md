@@ -63,14 +63,16 @@ ss.com-Scraper/
 
 #### 2. **Data Processing**
 
-**`cleanPrices(priceStr)`** (lines 26-44)
+**`cleanPrices(priceStr)`** (lines 26-60)
 - Normalizes price strings to floats
 - **Handles**:
   - Daily rates → monthly (×30)
   - Weekly rates → monthly (×4)
-  - Removes commas, spaces
-  - Handles special cases ('buy', '-', etc.)
+  - Monthly rates (no conversion)
+  - Removes commas, spaces, formatting
+  - Handles special cases ('buy', '-', empty strings, etc.)
 - **Returns**: Float price value
+- **Note**: Updated in 2025 to remove Python 2 encoding patterns
 
 **`cleanPostRowDetails(district, tradeType, rr, links, temp, postTable, postID)`** (lines 46-102)
 - Parses and validates individual listing rows
@@ -351,27 +353,64 @@ merged = sws.saveToDB(new_data, 'PropertiesRAW', uniqCols)
 
 1. **No rate limiting** - May need delays between requests for large scrapes
 2. **Page parsing failures** - Silent failures may miss some listings
-3. **Encoding assumptions** - `.encode("ascii", "ignore")` loses non-ASCII chars
-4. **Hardcoded assumptions**:
+3. **Hardcoded assumptions**:
    - 120-month multiplier for rent-to-sale conversion
    - Max 1000 sqm size filter
    - Floor validation assumes Floor ≤ Max Floor
-5. **No resume capability** - Scraping interruption requires restart
-6. **Database append-only** - No UPDATE mechanism, only INSERT after dedup
+4. **No resume capability** - Scraping interruption requires restart
+5. **Database append-only** - No UPDATE mechanism, only INSERT after dedup
 
 ## Compatibility Notes
 
-### Pandas 2.x Compatibility
+### Python 3.11+ & Modern Packages (2025)
 
-The code has been updated for pandas 2.x compatibility:
-- Replaced deprecated `DataFrame.append()` with `pd.concat()`
-- Lines 186, 220: Now using `pd.concat([df1, df2], ignore_index=True)`
+The code has been fully modernized for Python 3.11+ with pinned dependencies:
 
-**Tested with**:
-- Python 3.11
-- pandas 2.3.3
-- numpy 2.3.5
-- beautifulsoup4 4.14.3
+**Major Updates**:
+1. **Pandas 2.x Compatibility** (lines 186, 220)
+   - Replaced deprecated `DataFrame.append()` with `pd.concat()`
+   - Uses `pd.concat([df1, df2], ignore_index=True)`
+
+2. **String Encoding Fixed** (lines 26-60)
+   - Removed Python 2 legacy `.encode("ascii", "ignore")` pattern
+   - Now uses proper Python 3 string handling
+   - Added comprehensive docstring to `cleanPrices()`
+
+3. **Enhanced Documentation**
+   - Added inline comments for price conversion logic
+   - Clarified daily (×30) and weekly (×4) rate conversions
+
+**Pinned Dependencies** (requirements.txt):
+```
+beautifulsoup4==4.14.3
+requests==2.32.5
+pandas==2.3.3
+numpy==2.3.5
+matplotlib==3.10.0
+plotly==5.24.1
+seaborn==0.13.2
+scikit-learn==1.6.1
+statsmodels==0.14.6
+lxml==5.3.0
+```
+
+**Why Pinned Versions?**
+- Prevents breaking changes when packages update
+- Ensures reproducible environment
+- Avoids pandas API changes (like the `append()` deprecation)
+- Locks tested, working configuration
+
+**To Update Dependencies** (when needed):
+```bash
+# Test with newer versions first
+pip install --upgrade pandas numpy beautifulsoup4
+
+# Run tests
+python3 -c "import ssWebScraper as sws; ..."
+
+# Update requirements.txt if successful
+pip freeze | grep -E "(beautifulsoup4|requests|pandas|numpy)" > requirements_new.txt
+```
 
 ---
 

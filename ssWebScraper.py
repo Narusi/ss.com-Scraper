@@ -24,21 +24,37 @@ def getPostDate(link):
 ##=================  READ POSTLINE DETAILS  ===================##
 ##=============================================================##
 def cleanPrices(priceStr):
+    """
+    Clean and normalize price strings from ss.com listings.
+    Converts daily/weekly rates to monthly, removes formatting characters.
+
+    Args:
+        priceStr: Raw price string from listing
+
+    Returns:
+        float: Normalized price value
+    """
     priceStr = str(priceStr)
-    
+
     if len(priceStr)<2 and priceStr == '-':
         price = 0.00
     elif priceStr.find('/') < 0 and priceStr != 'buy ':
-        price = float(priceStr.replace(',','').encode("ascii", "ignore"))
+        # Simple price with no rate indicator
+        cleaned = priceStr.replace(',','').replace(' ','').strip()
+        price = float(cleaned) if cleaned else 0.00
     else:
         if priceStr.find('/day') < 0 and priceStr.find('/week') < 0 and priceStr != 'buy ':
-            price = float(priceStr.replace('/mon.', '').replace(',','').replace(' ','').encode("ascii", "ignore"))
+            # Monthly rate
+            cleaned = priceStr.replace('/mon.', '').replace(',','').replace(' ','').strip()
+            price = float(cleaned) if cleaned else 0.00
         elif priceStr.find('/day') < 0 and priceStr.find('/week') > 0 and priceStr!='buy ':
-            price = float(priceStr.replace('/week', '').replace(',','').replace(' ','').encode("ascii", "ignore"))
-            price = price  * 4
+            # Weekly rate - convert to monthly (x4)
+            cleaned = priceStr.replace('/week', '').replace(',','').replace(' ','').strip()
+            price = float(cleaned) * 4 if cleaned else 0.00
         elif priceStr.find('/day')>0 and priceStr.find('/week') < 0 and priceStr!='buy ':
-            price = float(priceStr.replace('/day', '').replace(',','').replace(' ','').encode("ascii", "ignore"))
-            price = price  * 30
+            # Daily rate - convert to monthly (x30)
+            cleaned = priceStr.replace('/day', '').replace(',','').replace(' ','').strip()
+            price = float(cleaned) * 30 if cleaned else 0.00
         else:
             price = 0.00
     return price
