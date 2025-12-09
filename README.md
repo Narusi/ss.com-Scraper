@@ -18,22 +18,66 @@ cd ss.com-Scraper
 pip install -e .
 ```
 
+## Updating
+
+To update to the latest version:
+
+```bash
+pip install --upgrade git+https://github.com/Narusi/ss.com-Scraper.git
+```
+
+For local installations:
+
+```bash
+cd ss.com-Scraper
+git pull origin master
+pip install -e . --upgrade
+```
+
 ## Quick Start
+
+### Simple One-Command Workflow (v0.2.0+)
 
 ```python
 import ss_re_scraper as sws
 
-# Gather district categories for Riga
+# Scrape, clean, and save to database in one command
+data = sws.updateDB(
+    'https://www.ss.com/en/real-estate/flats/riga/',
+    auto_clean=True,  # Automatically remove outliers
+    page_n=100,
+    verbose=True
+)
+
+# Generate comprehensive Markdown report
+sws.generateReport(
+    dbName='miniSS.db',
+    deal_type='SELL',  # or 'RENT'
+    output_file='market_report.md',
+    top_n=10,
+    verbose=True
+)
+```
+
+### Manual Step-by-Step Workflow
+
+```python
+import ss_re_scraper as sws
+
+# Step 1: Gather district categories
 districts = sws.gatherSubCats(initialLink='https://www.ss.com/en/real-estate/flats/riga/')
 
-# Scrape property listings (100 pages per district)
+# Step 2: Scrape property listings
 ipasumi = sws.readPostList(districts, page_n=100, verbose=True)
 
-# Save to SQLite database
-ipasumi = sws.saveToDB(ipasumi, tableName='PropertiesRAW',
+# Step 3: Clean data (optional but recommended)
+ipasumi_clean = sws.cleanData(ipasumi, remove_outliers=True, verbose=True)
+
+# Step 4: Save to SQLite database
+ipasumi = sws.saveToDB(ipasumi_clean, tableName='PropertiesRAW',
                        uniqCols=sws.uniqCols)
 
-# Load from database
+# Step 5: Load from database
 data = sws.loadFromDB(tableName='PropertiesRAW', dbName='miniSS.db')
 ```
 
@@ -168,6 +212,219 @@ ORDER BY "Price of sqm" ASC
 LIMIT 20
 """
 best_deals = pd.read_sql(query, conn)
+```
+
+## New Features in v0.2.0
+
+### Analytics Functions
+
+The package now includes built-in analytics functions that simplify data analysis:
+
+#### Cost Comparison Between Districts
+
+```python
+import ss_re_scraper as sws
+
+# Compare average costs across districts
+comparison = sws.getCostComparison(dbName='miniSS.db', deal_type='SELL')
+print(comparison)
+
+# Returns: District, listings_count, avg_price_sqm, min/max prices, avg_size, avg_rooms
+```
+
+#### Cost Trends Over Time
+
+```python
+# Analyze price trends over the last 6 months
+trends = sws.getCostTrends(dbName='miniSS.db', months=6)
+print(trends)
+
+# Returns: month, District, Deal Type, avg_price_sqm, total listings
+```
+
+#### Top Affordable Listings
+
+```python
+# Find top 10 most affordable apartments
+top10 = sws.getTopAffordable(
+    dbName='miniSS.db',
+    deal_type='RENT',
+    top_n=10
+)
+
+# Filter by district
+top10_centre = sws.getTopAffordable(
+    district='Centre',
+    deal_type='RENT',
+    top_n=10
+)
+
+# Filter by project type
+top10_new = sws.getTopAffordable(
+    project='New',
+    deal_type='SELL',
+    top_n=10
+)
+```
+
+#### Database Status
+
+```python
+# Get comprehensive database statistics
+status = sws.getDatabaseStatus(dbName='miniSS.db')
+
+print(f"Total records: {status['total_records']:,}")
+print(f"Date range: {status['date_range']}")
+print(f"By deal type:")
+print(status['by_deal_type'])
+print(f"\nTop projects:")
+print(status['by_project'])
+```
+
+### Report Generation
+
+Generate comprehensive Markdown reports with a single command:
+
+```python
+# Generate full market report for SELL transactions
+report_file = sws.generateReport(
+    dbName='miniSS.db',
+    tableName='PropertiesRAW',
+    output_file='sell_report.md',
+    deal_type='SELL',
+    top_n=10,
+    verbose=True
+)
+
+# Generate report for RENT transactions
+rent_report = sws.generateReport(
+    deal_type='RENT',
+    output_file='rent_report.md',
+    top_n=20
+)
+```
+
+**Report Contents:**
+- 📊 **Database Status**: Total records, date coverage, breakdowns by deal type/project/district
+- 💰 **Cost Comparison**: Average prices across all districts with key insights
+- 📈 **Cost Trends**: Monthly price trends over the last 6 months
+- 🏆 **Top Affordable Listings**: Best deals with clickable links to original listings
+- 📝 **Notes**: Metadata and data source information
+
+The generated Markdown reports are:
+- ✅ Viewable in GitHub, VS Code, and any browser
+- ✅ Easy to convert to PDF/HTML if needed
+- ✅ Version control friendly
+- ✅ Professional formatting with tables and insights
+
+### Data Cleaning
+
+Automatic data cleaning with outlier removal:
+
+```python
+# Clean data with default settings
+clean_df = sws.cleanData(raw_df, remove_outliers=True, verbose=True)
+
+# Cleaning removes:
+# - Properties with size > 1000 m²
+# - Floor > Max Floor inconsistencies
+# - Unrealistic room counts (> 10)
+# - Price anomalies
+# - NaN values
+```
+
+## Use Cases
+
+### Use Case 1: Market Research Report
+
+```python
+import ss_re_scraper as sws
+
+# Update database with latest listings
+sws.updateDB(
+    'https://www.ss.com/en/real-estate/flats/riga/',
+    auto_clean=True,
+    page_n=100,
+    verbose=True
+)
+
+# Generate comprehensive report
+sws.generateReport(
+    deal_type='SELL',
+    output_file='market_analysis_2025.md',
+    top_n=20
+)
+```
+
+### Use Case 2: Find Best Rental Deals
+
+```python
+import ss_re_scraper as sws
+
+# Get top affordable rentals in Centre
+centre_deals = sws.getTopAffordable(
+    district='Centre',
+    deal_type='RENT',
+    top_n=10
+)
+
+# Get top new construction rentals
+new_rentals = sws.getTopAffordable(
+    project='New',
+    deal_type='RENT',
+    top_n=15
+)
+
+print("Best deals in Centre:")
+print(centre_deals[['District', 'Rooms', 'Size', 'Total Price', 'Link']])
+```
+
+### Use Case 3: Investment Analysis
+
+```python
+import ss_re_scraper as sws
+
+# Compare costs across districts
+comparison = sws.getCostComparison(deal_type='SELL')
+
+# Find districts with best price/size ratio
+comparison['price_per_room'] = comparison['avg_total_price'] / comparison['avg_rooms']
+best_value = comparison.nsmallest(5, 'price_per_room')
+
+print("Best value districts for investment:")
+print(best_value[['District', 'avg_price_sqm', 'avg_total_price', 'price_per_room']])
+```
+
+### Use Case 4: Automated Daily Updates
+
+```python
+import ss_re_scraper as sws
+from datetime import datetime
+
+# Daily update script
+def daily_update():
+    # Scrape and update database
+    data = sws.updateDB(
+        'https://www.ss.com/en/real-estate/flats/riga/',
+        auto_clean=True,
+        page_n=50,
+        verbose=True
+    )
+
+    # Generate daily report
+    today = datetime.now().strftime('%Y-%m-%d')
+    sws.generateReport(
+        deal_type='RENT',
+        output_file=f'reports/rent_report_{today}.md',
+        top_n=10
+    )
+
+    # Check for new affordable listings
+    new_deals = sws.getTopAffordable(deal_type='RENT', top_n=5)
+    return new_deals
+
+# Run daily
+daily_update()
 ```
 
 ## Example Data Analysis Workflow
