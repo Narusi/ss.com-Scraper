@@ -265,7 +265,8 @@ def readPostList(subCats, categories=[], page_n=100, verbose=False):
     for col in numCols:
         dataDF[col] = pd.to_numeric(dataDF[col])
 
-    dataDF['Post Date'] = pd.to_datetime(dataDF['Post Date'])
+    # Parse dates with European format (day first: DD.MM.YYYY HH:MM)
+    dataDF['Post Date'] = pd.to_datetime(dataDF['Post Date'], format='%d.%m.%Y %H:%M', errors='coerce')
     dataDF = dataDF.dropna()
 
     return dataDF
@@ -301,7 +302,7 @@ def saveToDB(newData, tableName, uniqCols, dbName = 'miniSS.db', cols = []):
             oldData[c] = pd.to_numeric(oldData[c])
 
         for c in newData.dtypes[newData.dtypes == 'datetime64[ns]'].index:
-            oldData[c] = pd.to_datetime(oldData[c])
+            oldData[c] = pd.to_datetime(oldData[c], errors='coerce')
 
         #Append and save to database
         newData = pd.concat([newData, oldData], ignore_index=True).sort_values(by=['Post Date'], ascending=False)
@@ -334,7 +335,7 @@ def loadFromDB(tableName, dbName = 'miniSS.db', uniqCols = uniqCols):
     dbDF = pd.read_sql('SELECT * FROM ' + tableName, conn).drop(['index','ID'], axis = 1)
 
     for c in dbDF.columns:
-        if "date" in c.lower(): dbDF[c] = pd.to_datetime(dbDF[c]);
+        if "date" in c.lower(): dbDF[c] = pd.to_datetime(dbDF[c], errors='coerce');
 
     dbDF = dbDF.drop_duplicates(uniqCols)
 
