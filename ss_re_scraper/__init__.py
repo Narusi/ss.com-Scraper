@@ -19,6 +19,8 @@ from .scraper import (
     getCostTrends,
     getTopAffordable,
     getTopAffordableByDistrictAndProject,
+    getDatabaseStatus,
+    generateReport,
     uniqCols
 )
 
@@ -39,5 +41,7 @@ __all__ = [
     'getCostTrends',
     'getTopAffordable',
     'getTopAffordableByDistrictAndProject',
+    'getDatabaseStatus',
+    'generateReport',
     'uniqCols'
 ]

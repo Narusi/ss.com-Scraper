@@ -591,3 +591,221 @@ def getTopAffordableByDistrictAndProject(dbName='miniSS.db', tableName='Properti
     conn.close()
 
     return results
+
+##=============================================================##
+##==================  DATABASE STATUS  ========================##
+##=============================================================##
+def getDatabaseStatus(dbName='miniSS.db', tableName='PropertiesRAW'):
+    """
+    Get database status summary.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+
+    Returns:
+        dict: Database statistics
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(dbName)
+
+    # Total records
+    total_query = f'SELECT COUNT(*) as total FROM {tableName}'
+    total = pd.read_sql(total_query, conn).iloc[0]['total']
+
+    # Date range
+    date_query = f'SELECT MIN("Post Date") as min_date, MAX("Post Date") as max_date FROM {tableName}'
+    dates = pd.read_sql(date_query, conn).iloc[0]
+
+    # Records by deal type
+    deal_query = f'SELECT "Deal Type", COUNT(*) as count FROM {tableName} GROUP BY "Deal Type"'
+    by_deal = pd.read_sql(deal_query, conn)
+
+    # Records by project
+    project_query = f'''
+    SELECT Project, COUNT(*) as count
+    FROM {tableName}
+    GROUP BY Project
+    ORDER BY count DESC
+    LIMIT 10
+    '''
+    by_project = pd.read_sql(project_query, conn)
+
+    # Records by district
+    district_query = f'''
+    SELECT District, COUNT(*) as count
+    FROM {tableName}
+    GROUP BY District
+    ORDER BY count DESC
+    LIMIT 10
+    '''
+    by_district = pd.read_sql(district_query, conn)
+
+    conn.close()
+
+    return {
+        'total_records': int(total),
+        'date_range': (dates['min_date'], dates['max_date']),
+        'by_deal_type': by_deal,
+        'by_project': by_project,
+        'by_district': by_district
+    }
+
+##=============================================================##
+##==================  MARKDOWN REPORT  ========================##
+##=============================================================##
+def generateReport(dbName='miniSS.db', tableName='PropertiesRAW',
+                   output_file='report.md', deal_type='SELL',
+                   top_n=10, verbose=False):
+    """
+    Generate a comprehensive Markdown report with database status and analytics.
+
+    Args:
+        dbName (str): Database filename
+        tableName (str): Database table name
+        output_file (str): Output markdown filename
+        deal_type (str): 'SELL' or 'RENT' for analytics
+        top_n (int): Number of top affordable listings to include
+        verbose (bool): Print progress messages
+
+    Returns:
+        str: Path to generated report file
+    """
+    from datetime import datetime
+
+    if verbose: print("Gathering database status...")
+    status = getDatabaseStatus(dbName, tableName)
+
+    if verbose: print("Analyzing cost comparison...")
+    comparison = getCostComparison(dbName, tableName, deal_type)
+
+    if verbose: print("Analyzing cost trends...")
+    trends = getCostTrends(dbName, tableName, months=6)
+
+    if verbose: print(f"Finding top {top_n} affordable listings...")
+    top_affordable = getTopAffordable(dbName, tableName, deal_type=deal_type, top_n=top_n)
+
+    # Build markdown report
+    report = []
+    report.append("# SS.com Real Estate Market Report")
+    report.append(f"\n**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report.append(f"\n**Database:** {dbName}")
+    report.append(f"\n**Analysis Type:** {deal_type}\n")
+    report.append("\n---\n")
+
+    # Database Status
+    report.append("## 📊 Database Status\n")
+    report.append(f"- **Total Records:** {status['total_records']:,}")
+    report.append(f"- **Date Range:** {status['date_range'][0]} to {status['date_range'][1]}")
+    report.append(f"- **Coverage:** {(pd.to_datetime(status['date_range'][1]) - pd.to_datetime(status['date_range'][0])).days} days\n")
+
+    # Records by deal type
+    report.append("### Records by Deal Type\n")
+    report.append("| Deal Type | Count |")
+    report.append("|-----------|-------|")
+    for _, row in status['by_deal_type'].iterrows():
+        report.append(f"| {row['Deal Type']} | {int(row['count']):,} |")
+    report.append("")
+
+    # Records by project
+    report.append("### Top 10 Projects by Listing Count\n")
+    report.append("| Project | Count |")
+    report.append("|---------|-------|")
+    for _, row in status['by_project'].iterrows():
+        report.append(f"| {row['Project']} | {int(row['count']):,} |")
+    report.append("")
+
+    # Records by district
+    report.append("### Top 10 Districts by Listing Count\n")
+    report.append("| District | Count |")
+    report.append("|----------|-------|")
+    for _, row in status['by_district'].iterrows():
+        report.append(f"| {row['District']} | {int(row['count']):,} |")
+    report.append("\n---\n")
+
+    # Cost Comparison
+    report.append(f"## 💰 Cost Comparison Between Districts ({deal_type})\n")
+    report.append("| District | Listings | Avg €/m² | Min €/m² | Max €/m² | Avg Total € | Avg Size m² | Avg Rooms |")
+    report.append("|----------|----------|----------|----------|----------|-------------|-------------|-----------|")
+    for _, row in comparison.iterrows():
+        report.append(
+            f"| {row['District']} | {int(row['listings_count'])} | "
+            f"{row['avg_price_sqm']:,.2f} | {row['min_price_sqm']:,.2f} | "
+            f"{row['max_price_sqm']:,.2f} | {row['avg_total_price']:,.2f} | "
+            f"{row['avg_size']} | {row['avg_rooms']} |"
+        )
+    report.append("\n### Key Insights\n")
+    if len(comparison) > 0:
+        most_expensive = comparison.iloc[0]
+        least_expensive = comparison.iloc[-1]
+        report.append(f"- **Most Expensive District:** {most_expensive['District']} (€{most_expensive['avg_price_sqm']:.2f}/m²)")
+        report.append(f"- **Most Affordable District:** {least_expensive['District']} (€{least_expensive['avg_price_sqm']:.2f}/m²)")
+        price_diff = most_expensive['avg_price_sqm'] - least_expensive['avg_price_sqm']
+        price_ratio = most_expensive['avg_price_sqm'] / least_expensive['avg_price_sqm']
+        report.append(f"- **Price Difference:** €{price_diff:.2f}/m² ({price_ratio:.1f}x)\n")
+    report.append("\n---\n")
+
+    # Cost Trends
+    report.append(f"## 📈 Cost Trends Over Time (Last 6 Months)\n")
+    if len(trends) > 0:
+        # Group by month and deal type
+        monthly_avg = trends.groupby(['month', 'Deal Type'])['avg_price_sqm'].mean().reset_index()
+
+        report.append("| Month | Deal Type | Avg €/m² | Total Listings |")
+        report.append("|-------|-----------|----------|----------------|")
+        for _, row in trends.head(20).iterrows():
+            month_str = row['month'].strftime('%Y-%m')
+            report.append(
+                f"| {month_str} | {row['Deal Type']} | "
+                f"{row['avg_price_sqm']:,.2f} | {int(row['listings_count'])} |"
+            )
+        report.append("")
+
+        # Trend insights
+        report.append("### Trend Insights\n")
+        latest_month = trends.iloc[0]
+        report.append(f"- **Latest Month:** {latest_month['month'].strftime('%Y-%m')}")
+        report.append(f"- **Latest Avg Price:** €{latest_month['avg_price_sqm']:.2f}/m²")
+        report.append(f"- **Active Listings:** {int(trends['listings_count'].sum()):,}\n")
+    else:
+        report.append("*No trend data available for the selected period.*\n")
+    report.append("\n---\n")
+
+    # Top Affordable Listings
+    report.append(f"## 🏆 Top {top_n} Most Affordable Listings ({deal_type})\n")
+    if len(top_affordable) > 0:
+        report.append("| Rank | District | Project | Rooms | Size m² | Floor | €/m² | Total € | Link |")
+        report.append("|------|----------|---------|-------|---------|-------|------|---------|------|")
+        for idx, row in top_affordable.iterrows():
+            rank = idx + 1
+            floor_info = f"{int(row['Floor'])}/{int(row['Max. Floor'])}"
+            link = f"[View]({row['Link']})"
+            report.append(
+                f"| {rank} | {row['District']} | {row['Project']} | "
+                f"{int(row['Rooms'])} | {int(row['Size'])} | {floor_info} | "
+                f"{row['Price of sqm']:.2f} | {row['Total Price']:.2f} | {link} |"
+            )
+        report.append("")
+    else:
+        report.append("*No listings found.*\n")
+
+    report.append("\n---\n")
+
+    # Footer
+    report.append("## 📝 Notes\n")
+    report.append(f"- This report analyzes **{deal_type}** transactions")
+    report.append("- Prices shown are in Euros (€)")
+    report.append("- For RENT listings: 'Alt. Price' represents rent × 120 months")
+    report.append("- For SELL listings: 'Alt. Price' equals the purchase price")
+    report.append(f"\n**Data Source:** ss.com Real Estate Scraper v0.2.0")
+    report.append(f"\n**Report Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # Write to file
+    report_text = "\n".join(report)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(report_text)
+
+    if verbose: print(f"✓ Report generated: {output_file}")
+
+    return output_file

@@ -76,3 +76,7 @@ Thumbs.db
 # Project specific
 *.db
 *.csv
+
+# Generated reports
+*_report.md
+report.md
